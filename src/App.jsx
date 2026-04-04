@@ -287,26 +287,46 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
   };
 
   // ─── SUBCOMPONENTS ────────────────────────────────────────────────────
-  const Inp = ({ label, value, onChange, placeholder, type="text", pre, suf, req }) => (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ fontFamily: "'DM Sans'", fontSize: 12, fontWeight: 500, color: P.muted, display: "block", marginBottom: 4 }}>
-        {label}{req && <span style={{ color: P.danger }}> *</span>}
-      </label>
-      <div style={{ position: "relative" }}>
-        {pre && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: P.muted }}>{pre}</span>}
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-          style={{
-            width: "100%", padding: `9px ${suf?40:10}px 9px ${pre?24:10}px`, fontFamily: "'DM Sans'", fontSize: 14,
-            border: `1.5px solid ${P.border}`, borderRadius: 8, outline: "none", background: P.bg,
-            color: P.text, boxSizing: "border-box",
-          }}
-          onFocus={e => e.target.style.borderColor = P.accent}
-          onBlur={e => e.target.style.borderColor = P.border}
-        />
-        {suf && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: P.muted }}>{suf}</span>}
+  const filterNumeric = (raw, { allowDecimal = true, maxDecimalPlaces = 2 } = {}) => {
+    let v = raw.replace(/[^0-9.]/g, "");
+    const parts = v.split(".");
+    if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
+    if (!allowDecimal) v = v.replace(/\./g, "");
+    if (allowDecimal && v.includes(".")) {
+      const [int, dec] = v.split(".");
+      v = int + "." + dec.slice(0, maxDecimalPlaces);
+    }
+    return v;
+  };
+
+  const Inp = ({ label, value, onChange, placeholder, type="text", pre, suf, req, numeric, maxDecimals = 2 }) => {
+    const handleChange = (e) => {
+      let v = e.target.value;
+      if (numeric) v = filterNumeric(v, { allowDecimal: maxDecimals > 0, maxDecimalPlaces: maxDecimals });
+      onChange(v);
+    };
+    return (
+      <div style={{ marginBottom: 14 }}>
+        <label style={{ fontFamily: "'DM Sans'", fontSize: 12, fontWeight: 500, color: P.muted, display: "block", marginBottom: 4 }}>
+          {label}{req && <span style={{ color: P.danger }}> *</span>}
+        </label>
+        <div style={{ position: "relative" }}>
+          {pre && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: P.muted }}>{pre}</span>}
+          <input type={numeric ? "text" : type} inputMode={numeric ? "decimal" : undefined} pattern={numeric ? "[0-9]*\\.?[0-9]*" : undefined}
+            value={value} onChange={handleChange} placeholder={placeholder}
+            style={{
+              width: "100%", padding: `9px ${suf?40:10}px 9px ${pre?24:10}px`, fontFamily: "'DM Sans'", fontSize: 14,
+              border: `1.5px solid ${P.border}`, borderRadius: 8, outline: "none", background: P.bg,
+              color: P.text, boxSizing: "border-box",
+            }}
+            onFocus={e => e.target.style.borderColor = P.accent}
+            onBlur={e => e.target.style.borderColor = P.border}
+          />
+          {suf && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: P.muted }}>{suf}</span>}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const Btn = ({ children, onClick, v="primary", disabled, style: s, full }) => {
     const base = { fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14, border: "none", borderRadius: 10, cursor: disabled?"not-allowed":"pointer", padding: "12px 24px", transition: "all 0.2s", opacity: disabled?0.5:1, width: full?"100%":undefined };
@@ -405,11 +425,11 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
                   )}
                   <input value={p.name} onChange={e => upd(i, "name", e.target.value)} placeholder={`Proposal ${i+1}`}
                     style={{ fontFamily: "'Fraunces',serif", fontWeight: 600, fontSize: 16, border: "none", background: "transparent", color: P.accent, width: "calc(100% - 28px)", marginBottom: 14, outline: "none" }} />
-                  <Inp label="System Size" value={p.systemSize} onChange={v => upd(i,"systemSize",v)} placeholder="8.5" suf="kW" req type="number" />
-                  <Inp label="Est. Annual Production" value={p.estimatedKwh} onChange={v => upd(i,"estimatedKwh",v)} placeholder="12750" suf="kWh" type="number" />
-                  <Inp label="Battery Capacity" value={p.batteryCapacity} onChange={v => upd(i,"batteryCapacity",v)} placeholder="13.5" suf="kWh" type="number" />
-                  <Inp label="Loan Interest Rate" value={p.loanRate} onChange={v => upd(i,"loanRate",v)} placeholder="3.99" suf="%" type="number" />
-                  <Inp label="Total System Price" value={p.totalPrice} onChange={v => upd(i,"totalPrice",v)} placeholder="32000" pre="$" req type="number" />
+                  <Inp label="System Size" value={p.systemSize} onChange={v => upd(i,"systemSize",v)} placeholder="8.5" suf="kW" req numeric />
+                  <Inp label="Est. Annual Production" value={p.estimatedKwh} onChange={v => upd(i,"estimatedKwh",v)} placeholder="12750" suf="kWh" numeric maxDecimals={0} />
+                  <Inp label="Battery Capacity" value={p.batteryCapacity} onChange={v => upd(i,"batteryCapacity",v)} placeholder="13.5" suf="kWh" numeric />
+                  <Inp label="Loan Interest Rate" value={p.loanRate} onChange={v => upd(i,"loanRate",v)} placeholder="3.99" suf="%" numeric />
+                  <Inp label="Total System Price" value={p.totalPrice} onChange={v => upd(i,"totalPrice",v)} placeholder="32000" pre="$" req numeric maxDecimals={0} />
                   <Inp label="Panel Brand" value={p.panelBrand} onChange={v => upd(i,"panelBrand",v)} placeholder="e.g. REC, Q CELLS" />
                 </div>
               ))}
