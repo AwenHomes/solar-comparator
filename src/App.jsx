@@ -105,6 +105,81 @@ const P = {
 
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Fraunces:wght@400;600;700&display=swap";
 
+// ─── SUBCOMPONENTS (defined at module level for stable React identity) ──
+const filterNumeric = (raw, { allowDecimal = true, maxDecimalPlaces = 2 } = {}) => {
+  let v = raw.replace(/[^0-9.]/g, "");
+  const parts = v.split(".");
+  if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
+  if (!allowDecimal) v = v.replace(/\./g, "");
+  if (allowDecimal && v.includes(".")) {
+    const [int, dec] = v.split(".");
+    v = int + "." + dec.slice(0, maxDecimalPlaces);
+  }
+  return v;
+};
+
+const Inp = ({ label, value, onChange, placeholder, type="text", pre, suf, req, numeric, maxDecimals = 2 }) => {
+  const handleChange = (e) => {
+    let v = e.target.value;
+    if (numeric) v = filterNumeric(v, { allowDecimal: maxDecimals > 0, maxDecimalPlaces: maxDecimals });
+    onChange(v);
+  };
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ fontFamily: "'DM Sans'", fontSize: 12, fontWeight: 500, color: P.muted, display: "block", marginBottom: 4 }}>
+        {label}{req && <span style={{ color: P.danger }}> *</span>}
+      </label>
+      <div style={{ position: "relative" }}>
+        {pre && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: P.muted }}>{pre}</span>}
+        <input type={numeric ? "text" : type} inputMode={numeric ? "decimal" : undefined} pattern={numeric ? "[0-9]*\\.?[0-9]*" : undefined}
+          value={value} onChange={handleChange} placeholder={placeholder}
+          style={{
+            width: "100%", padding: `9px ${suf?40:10}px 9px ${pre?24:10}px`, fontFamily: "'DM Sans'", fontSize: 14,
+            border: `1.5px solid ${P.border}`, borderRadius: 8, outline: "none", background: P.bg,
+            color: P.text, boxSizing: "border-box",
+          }}
+          onFocus={e => e.target.style.borderColor = P.accent}
+          onBlur={e => e.target.style.borderColor = P.border}
+        />
+        {suf && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: P.muted }}>{suf}</span>}
+      </div>
+    </div>
+  );
+};
+
+const Btn = ({ children, onClick, v="primary", disabled, style: s, full }) => {
+  const base = { fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14, border: "none", borderRadius: 10, cursor: disabled?"not-allowed":"pointer", padding: "12px 24px", transition: "all 0.2s", opacity: disabled?0.5:1, width: full?"100%":undefined };
+  const vars = { primary: { background: P.accent, color: "#fff" }, warm: { background: P.warm, color: "#fff" }, outline: { background: "transparent", border: `2px solid ${P.accent}`, color: P.accent }, ghost: { background: P.neutral, color: P.text } };
+  return <button onClick={onClick} disabled={disabled} style={{ ...base, ...vars[v], ...s }}>{children}</button>;
+};
+
+const Steps = ({ step }) => {
+  const labels = ["Choose Input", "Enter Details", "Compare", "Your Proposal"];
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0, margin: "0 0 32px", flexWrap: "wrap" }}>
+      {labels.map((l, i) => {
+        const s = i + 1; const active = s === step; const done = s < step;
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: done ? P.accent : active ? P.warm : P.neutral,
+                color: done||active ? "#fff" : P.muted,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14,
+                boxShadow: active ? `0 0 0 4px ${P.warmLight}` : "none",
+              }}>{done ? "✓" : s}</div>
+              <span style={{ fontFamily: "'DM Sans'", fontSize: 10, fontWeight: active?600:400, color: active?P.text:P.muted, marginTop: 5, textAlign: "center" }}>{l}</span>
+            </div>
+            {i < 3 && <div style={{ width: 32, height: 2, background: done?P.accent:P.border, margin: "0 2px", marginBottom: 18 }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ─── EMPTY PROPOSAL ─────────────────────────────────────────────────────
 const blank = (n) => ({ name: n || "", systemSize: "", estimatedKwh: "", batteryCapacity: "", loanRate: "", totalPrice: "", panelBrand: "" });
 
@@ -286,81 +361,6 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
     setSubmitting(false);
   };
 
-  // ─── SUBCOMPONENTS ────────────────────────────────────────────────────
-  const filterNumeric = (raw, { allowDecimal = true, maxDecimalPlaces = 2 } = {}) => {
-    let v = raw.replace(/[^0-9.]/g, "");
-    const parts = v.split(".");
-    if (parts.length > 2) v = parts[0] + "." + parts.slice(1).join("");
-    if (!allowDecimal) v = v.replace(/\./g, "");
-    if (allowDecimal && v.includes(".")) {
-      const [int, dec] = v.split(".");
-      v = int + "." + dec.slice(0, maxDecimalPlaces);
-    }
-    return v;
-  };
-
-  const Inp = ({ label, value, onChange, placeholder, type="text", pre, suf, req, numeric, maxDecimals = 2 }) => {
-    const handleChange = (e) => {
-      let v = e.target.value;
-      if (numeric) v = filterNumeric(v, { allowDecimal: maxDecimals > 0, maxDecimalPlaces: maxDecimals });
-      onChange(v);
-    };
-    return (
-      <div style={{ marginBottom: 14 }}>
-        <label style={{ fontFamily: "'DM Sans'", fontSize: 12, fontWeight: 500, color: P.muted, display: "block", marginBottom: 4 }}>
-          {label}{req && <span style={{ color: P.danger }}> *</span>}
-        </label>
-        <div style={{ position: "relative" }}>
-          {pre && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: P.muted }}>{pre}</span>}
-          <input type={numeric ? "text" : type} inputMode={numeric ? "decimal" : undefined} pattern={numeric ? "[0-9]*\\.?[0-9]*" : undefined}
-            value={value} onChange={handleChange} placeholder={placeholder}
-            style={{
-              width: "100%", padding: `9px ${suf?40:10}px 9px ${pre?24:10}px`, fontFamily: "'DM Sans'", fontSize: 14,
-              border: `1.5px solid ${P.border}`, borderRadius: 8, outline: "none", background: P.bg,
-              color: P.text, boxSizing: "border-box",
-            }}
-            onFocus={e => e.target.style.borderColor = P.accent}
-            onBlur={e => e.target.style.borderColor = P.border}
-          />
-          {suf && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: P.muted }}>{suf}</span>}
-        </div>
-      </div>
-    );
-  };
-
-  const Btn = ({ children, onClick, v="primary", disabled, style: s, full }) => {
-    const base = { fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14, border: "none", borderRadius: 10, cursor: disabled?"not-allowed":"pointer", padding: "12px 24px", transition: "all 0.2s", opacity: disabled?0.5:1, width: full?"100%":undefined };
-    const vars = { primary: { background: P.accent, color: "#fff" }, warm: { background: P.warm, color: "#fff" }, outline: { background: "transparent", border: `2px solid ${P.accent}`, color: P.accent }, ghost: { background: P.neutral, color: P.text } };
-    return <button onClick={onClick} disabled={disabled} style={{ ...base, ...vars[v], ...s }}>{children}</button>;
-  };
-
-  const Steps = () => {
-    const labels = ["Choose Input", "Enter Details", "Compare", "Your Proposal"];
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0, margin: "0 0 32px", flexWrap: "wrap" }}>
-        {labels.map((l, i) => {
-          const s = i + 1; const active = s === step; const done = s < step;
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: done ? P.accent : active ? P.warm : P.neutral,
-                  color: done||active ? "#fff" : P.muted,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'DM Sans'", fontWeight: 600, fontSize: 14,
-                  boxShadow: active ? `0 0 0 4px ${P.warmLight}` : "none",
-                }}>{done ? "✓" : s}</div>
-                <span style={{ fontFamily: "'DM Sans'", fontSize: 10, fontWeight: active?600:400, color: active?P.text:P.muted, marginTop: 5, textAlign: "center" }}>{l}</span>
-              </div>
-              {i < 3 && <div style={{ width: 32, height: 2, background: done?P.accent:P.border, margin: "0 2px", marginBottom: 18 }} />}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
   // ─── RENDER ───────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: P.bg, fontFamily: "'DM Sans', sans-serif", color: P.text }}>
@@ -378,7 +378,7 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
       </div>
 
       <div style={{ maxWidth: 840, margin: "0 auto", padding: "24px 16px 50px" }}>
-        <Steps />
+        <Steps step={step} />
 
         {/* ──── STEP 1 ──── */}
         {step === 1 && (
