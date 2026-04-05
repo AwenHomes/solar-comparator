@@ -1,8 +1,52 @@
 import { useState, useRef } from "react";
+import PrivacyPolicy from "./PrivacyPolicy";
+import TermsOfService from "./TermsOfService";
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────
-const SUPABASE_URL = "https://kvzurzcgndrooxhfkdbv.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2enVyemNnbmRyb294aGZrZGJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3ODI4NjksImV4cCI6MjA4NzM1ODg2OX0.C4WxeFIwZ0p1L_cbGL_sP5R57PJQvxK8M6teF26nIVM";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("Missing required environment variables: VITE_SUPABASE_URL and/or VITE_SUPABASE_KEY");
+}
+
+// ─── SECURITY UTILITIES ────────────────────────────────────────────────
+const escapeHtml = (str) => String(str)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= 254;
+
+const validatePhone = (phone) => {
+  if (!phone) return true; // optional field
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits[0] === "1");
+};
+
+const sanitizePhone = (phone) => phone.replace(/\D/g, "").replace(/^1(\d{10})$/, "$1");
+
+const validateNumericBounds = (value, min, max) => {
+  const num = parseFloat(value);
+  return !isNaN(num) && num >= min && num <= max;
+};
+
+// ─── RATE LIMITER ──────────────────────────────────────────────────────
+const submissionTimestamps = [];
+const checkRateLimit = () => {
+  const now = Date.now();
+  const fiveMinAgo = now - 5 * 60 * 1000;
+  while (submissionTimestamps.length && submissionTimestamps[0] < fiveMinAgo) submissionTimestamps.shift();
+  if (submissionTimestamps.length >= 3) return false;
+  submissionTimestamps.push(now);
+  return true;
+};
+
+// ─── CONSENT LANGUAGE ──────────────────────────────────────────────────
+const CONSENT_TEXT = {
+  email: "I consent to receive marketing emails from Awen Energy LLC about my solar comparison, custom proposals, and energy savings tips. You can unsubscribe anytime via the link in each email or by contacting privacy@awenenergy.com.",
+  sms: "I consent to receive SMS text messages from Awen Energy LLC at the phone number provided regarding my solar comparison and custom proposal. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out. Consent is not a condition of purchase.",
+  calls: "I consent to receive telephone calls, including calls made using an automatic telephone dialing system or prerecorded voice, from Awen Energy LLC at the phone number provided regarding my solar comparison and custom proposal. Consent is not a condition of purchase.",
+};
 
 // ─── DETERMINISTIC CALCULATION ENGINE ───────────────────────────────────
 const PANEL_DEGRADATION = 0.005;
@@ -111,9 +155,12 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [lead, setLead] = useState({ name: "", email: "", phone: "" });
-  const [consent, setConsent] = useState({ email: false, phone: false });
+  const [consent, setConsent] = useState({ email: false, sms: false, calls: false });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [leadErrors, setLeadErrors] = useState({});
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const fileRef = useRef(null);
 
   const upd = (i, k, v) => { const c = [...proposals]; c[i] = { ...c[i], [k]: v }; setProposals(c); };
@@ -175,45 +222,67 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
   const download = () => {
     if (!results) return;
     const rows = results.map(r => `<div style="flex:1;min-width:200px;padding:16px;border:1px solid #ddd;border-radius:10px;background:#fafafa;">
-      <h3 style="color:#2D6A4F;margin:0 0 10px">${r.name}</h3>
-      <p><b>System:</b> ${r.systemSize} kW</p><p><b>Panel:</b> ${r.panelBrand||"—"}</p>
-      <p><b>Price:</b> $${Number(r.totalPrice).toLocaleString()}</p><p><b>$/W:</b> $${r.m.ppw}</p>
-      <p><b>Annual kWh:</b> ${r.m.kwhYear.toLocaleString()}</p>
-      <p><b>Battery:</b> ${r.batteryCapacity?r.batteryCapacity+" kWh":"None"}</p>
-      <p><b>Monthly:</b> ${r.m.monthly?"$"+r.m.monthly:"N/A"}</p>
-      <p><b>Interest:</b> $${r.m.interest.toLocaleString()}</p>
-      <p><b>Breakeven:</b> ${r.m.breakeven} yr</p>
-      <p><b>25yr Savings:</b> $${r.m.saves[25]?.toLocaleString()}</p></div>`).join("");
+      <h3 style="color:#2D6A4F;margin:0 0 10px">${escapeHtml(r.name)}</h3>
+      <p><b>System:</b> ${escapeHtml(r.systemSize)} kW</p><p><b>Panel:</b> ${escapeHtml(r.panelBrand||"—")}</p>
+      <p><b>Price:</b> $${escapeHtml(Number(r.totalPrice).toLocaleString())}</p><p><b>$/W:</b> $${escapeHtml(r.m.ppw)}</p>
+      <p><b>Annual kWh:</b> ${escapeHtml(r.m.kwhYear.toLocaleString())}</p>
+      <p><b>Battery:</b> ${r.batteryCapacity?escapeHtml(r.batteryCapacity)+" kWh":"None"}</p>
+      <p><b>Monthly:</b> ${r.m.monthly?"$"+escapeHtml(r.m.monthly):"N/A"}</p>
+      <p><b>Interest:</b> $${escapeHtml(r.m.interest.toLocaleString())}</p>
+      <p><b>Breakeven:</b> ${escapeHtml(r.m.breakeven)} yr</p>
+      <p><b>25yr Savings:</b> $${escapeHtml(r.m.saves[25]?.toLocaleString())}</p></div>`).join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Solar Comparison — Awen Energy</title>
     <style>body{font-family:system-ui;max-width:800px;margin:0 auto;padding:30px;color:#1b1b1b}h1{color:#2D6A4F}h2{color:#E8985E;margin-top:30px}.cards{display:flex;gap:16px;flex-wrap:wrap;margin:20px 0}p{line-height:1.6;margin:4px 0}.footer{margin-top:40px;padding-top:20px;border-top:2px solid #2D6A4F;font-size:13px;color:#888}</style></head><body>
-    <h1>Your Solar Proposal Comparison</h1><p style="color:#666">Generated by Awen Energy — ${new Date().toLocaleDateString()}</p>
+    <h1>Your Solar Proposal Comparison</h1><p style="color:#666">Generated by Awen Energy — ${escapeHtml(new Date().toLocaleDateString())}</p>
     <h2>Side-by-Side Overview</h2><div class="cards">${rows}</div>
-    <h2>Analysis</h2><div style="background:#f0fdf4;padding:20px;border-radius:10px;line-height:1.7">${(aiText||"Not available.").replace(/\n/g,"<br>")}</div>
+    <h2>Analysis</h2><div style="background:#f0fdf4;padding:20px;border-radius:10px;line-height:1.7">${escapeHtml(aiText||"Not available.").replace(/\n/g,"<br>")}</div>
     <div class="footer"><p><b>Awen Energy</b> — Helping homeowners take control of their power.</p><p>Want a free, honest third proposal? Visit awenenergy.com</p></div></body></html>`;
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([html],{type:"text/html"}));
     a.download = "solar-comparison-report.html"; a.click();
   };
 
+  const validateLead = () => {
+    const errors = {};
+    if (!lead.name || lead.name.trim().length < 1) errors.name = "Name is required.";
+    else if (lead.name.length > 100) errors.name = "Name must be under 100 characters.";
+    if (!lead.email) errors.email = "Email is required.";
+    else if (!validateEmail(lead.email)) errors.email = "Please enter a valid email address.";
+    if (lead.phone && !validatePhone(lead.phone)) errors.phone = "Please enter a valid US phone number (10 digits).";
+    if ((consent.sms || consent.calls) && !lead.phone) errors.phone = "Phone number is required when opting into SMS or calls.";
+    setLeadErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const submitLead = async () => {
-    if (!lead.name || !lead.email) return;
+    if (!validateLead()) return;
+    if (!checkRateLimit()) { setLeadErrors({ form: "Too many submissions. Please wait a few minutes." }); return; }
+    if (!SUPABASE_URL || !SUPABASE_KEY) { setLeadErrors({ form: "Service configuration error. Please try again later." }); return; }
     setSubmitting(true);
     try {
-      const cm = []; if (consent.phone) cm.push("phone"); if (consent.email) cm.push("email");
+      const cm = [];
+      if (consent.email) cm.push("email");
+      if (consent.sms) cm.push("sms");
+      if (consent.calls) cm.push("calls");
+      const consentRecords = cm.map(method => ({
+        method,
+        text: CONSENT_TEXT[method],
+        granted_at: new Date().toISOString(),
+      }));
       await fetch(`${SUPABASE_URL}/rest/v1/solar_comparisons`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Prefer: "return=minimal" },
         body: JSON.stringify({
-          name: lead.name, email: lead.email, phone: lead.phone || null,
+          name: lead.name.trim(), email: lead.email.trim().toLowerCase(), phone: lead.phone ? sanitizePhone(lead.phone) : null,
           proposals: proposals.map(p => ({ name:p.name, systemSize:p.systemSize, estimatedKwh:p.estimatedKwh, batteryCapacity:p.batteryCapacity, loanRate:p.loanRate, totalPrice:p.totalPrice, panelBrand:p.panelBrand })),
           ai_analysis: aiText, calculation_results: results?.map(r => ({ name:r.name, metrics:r.m })),
           input_method: method, consent_methods: cm.join(",")||null,
           consented_at: cm.length ? new Date().toISOString() : null,
-          consent_text: cm.length ? "I consent to being contacted by Awen Energy LLC via selected methods regarding my solar comparison and custom proposal." : null,
+          consent_text: cm.length ? JSON.stringify(consentRecords) : null,
           consent_url: window.location.href, user_agent: navigator.userAgent, source: "solar_comparator",
         }),
       });
       setSubmitted(true);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setLeadErrors({ form: "Submission failed. Please try again." }); }
     setSubmitting(false);
   };
 
@@ -437,24 +506,40 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
               </p>
             </div>
             <div style={{ background: P.card, borderRadius: 14, border: `1px solid ${P.border}`, padding: "24px 22px", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-              <Inp label="Your Name" value={lead.name} onChange={v => setLead({...lead,name:v})} placeholder="First and last name" req />
-              <Inp label="Email" value={lead.email} onChange={v => setLead({...lead,email:v})} placeholder="you@email.com" type="email" req />
-              <Inp label="Phone" value={lead.phone} onChange={v => setLead({...lead,phone:v})} placeholder="(optional)" type="tel" />
+              <Inp label="Your Name" value={lead.name} onChange={v => { setLead({...lead,name:v}); setLeadErrors({...leadErrors,name:undefined}); }} placeholder="First and last name" req />
+              {leadErrors.name && <p style={{ color: P.danger, fontSize: 11, margin: "-10px 0 8px" }}>{leadErrors.name}</p>}
+              <Inp label="Email" value={lead.email} onChange={v => { setLead({...lead,email:v}); setLeadErrors({...leadErrors,email:undefined}); }} placeholder="you@email.com" type="email" req />
+              {leadErrors.email && <p style={{ color: P.danger, fontSize: 11, margin: "-10px 0 8px" }}>{leadErrors.email}</p>}
+              <Inp label="Phone" value={lead.phone} onChange={v => { setLead({...lead,phone:v}); setLeadErrors({...leadErrors,phone:undefined}); }} placeholder="(555) 123-4567 (optional)" type="tel" />
+              {leadErrors.phone && <p style={{ color: P.danger, fontSize: 11, margin: "-10px 0 8px" }}>{leadErrors.phone}</p>}
+
+              {/* ── Communication Consent (TCPA / CAN-SPAM Compliant) ── */}
               <div style={{ margin: "18px 0 6px", padding: 14, background: P.neutral, borderRadius: 10 }}>
-                <p style={{ fontSize: 11, color: P.muted, margin: "0 0 10px", lineHeight: 1.4 }}>How would you like us to reach you? (optional)</p>
+                <p style={{ fontSize: 11, fontWeight: 600, color: P.text, margin: "0 0 10px", lineHeight: 1.4 }}>Communication Preferences (optional)</p>
                 {[
-                  { k: "email", t: "I consent to receive emails from Awen Energy LLC about my solar comparison and custom proposal." },
-                  { k: "phone", t: "I consent to receive calls/texts from Awen Energy LLC at the number provided. I can opt out anytime." },
+                  { k: "email", t: CONSENT_TEXT.email },
+                  { k: "sms", t: CONSENT_TEXT.sms },
+                  { k: "calls", t: CONSENT_TEXT.calls },
                 ].map(c => (
-                  <label key={c.k} style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 8, cursor: "pointer", fontSize: 12, lineHeight: 1.4 }}>
-                    <input type="checkbox" checked={consent[c.k]} onChange={e => setConsent({...consent,[c.k]:e.target.checked})} style={{ marginTop: 2 }} />
-                    <span>{c.t}</span>
+                  <label key={c.k} style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 10, cursor: "pointer", fontSize: 11, lineHeight: 1.5 }}>
+                    <input type="checkbox" checked={consent[c.k]} onChange={e => setConsent({...consent,[c.k]:e.target.checked})} style={{ marginTop: 2, flexShrink: 0 }} />
+                    <span style={{ color: "#374151" }}>{c.t}</span>
                   </label>
                 ))}
               </div>
-              <p style={{ fontSize: 9, color: P.muted, lineHeight: 1.5, margin: "6px 0 14px" }}>
-                By submitting, you agree to our Privacy Policy and Terms of Service. Your information is never sold. Msg & data rates may apply.
+
+              {/* ── Legal Disclosure ── */}
+              <p style={{ fontSize: 10, color: P.muted, lineHeight: 1.6, margin: "6px 0 14px" }}>
+                By submitting, you agree to our{" "}
+                <span onClick={() => setShowPrivacy(true)} style={{ color: P.accent, cursor: "pointer", textDecoration: "underline" }}>Privacy Policy</span>
+                {" "}and{" "}
+                <span onClick={() => setShowTerms(true)} style={{ color: P.accent, cursor: "pointer", textDecoration: "underline" }}>Terms of Service</span>.
+                {" "}Your information is never sold.{" "}
+                For data requests: <a href="mailto:privacy@awenenergy.com" style={{ color: P.accent }}>privacy@awenenergy.com</a>.
+                {" "}Awen Energy LLC.
               </p>
+
+              {leadErrors.form && <p style={{ color: P.danger, fontSize: 12, textAlign: "center", margin: "0 0 10px" }}>{leadErrors.form}</p>}
               <Btn v="warm" full onClick={submitLead} disabled={!lead.name||!lead.email||submitting}>
                 {submitting ? "Sending..." : "Request My Custom Proposal"}
               </Btn>
@@ -484,7 +569,19 @@ Tone: warm, conversational — like a smart neighbor who knows solar. Plain lang
       <div style={{ background: P.accent, padding: "18px 20px", textAlign: "center", fontFamily: "'DM Sans'", fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
         <strong style={{ color: "#fff" }}>Awen Energy</strong> — Helping homeowners take control of their power.
         <br />This tool provides estimates for informational purposes only.
+        <br />
+        <span onClick={() => setShowPrivacy(true)} style={{ color: "rgba(255,255,255,0.85)", cursor: "pointer", textDecoration: "underline" }}>Privacy Policy</span>
+        {" | "}
+        <span onClick={() => setShowTerms(true)} style={{ color: "rgba(255,255,255,0.85)", cursor: "pointer", textDecoration: "underline" }}>Terms of Service</span>
+        {" | "}
+        <a href="mailto:privacy@awenenergy.com" style={{ color: "rgba(255,255,255,0.85)", textDecoration: "underline" }}>privacy@awenenergy.com</a>
+        <br />
+        <span style={{ fontSize: 11 }}>We do not sell or share your personal information.</span>
       </div>
+
+      {/* Legal Modals */}
+      {showPrivacy && <PrivacyPolicy onClose={() => setShowPrivacy(false)} palette={P} />}
+      {showTerms && <TermsOfService onClose={() => setShowTerms(false)} palette={P} />}
     </div>
   );
 }
