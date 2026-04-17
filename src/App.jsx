@@ -270,26 +270,18 @@ export default function App() {
         battery: x.batteryCapacity ? x.batteryCapacity + "kWh" : "None", panel: x.panelBrand || "Unknown",
         breakeven: x.m.breakeven + "yr", savings25: "$" + x.m.saves[25]?.toLocaleString(),
       }));
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          messages: [{ role: "user", content: `You are a friendly, knowledgeable solar energy advisor helping a homeowner compare solar proposals. You are NOT selling anything — give them honest, clear analysis.
-
-Proposals: ${JSON.stringify(summaries, null, 2)}
-
-Write a clear, friendly analysis covering:
-1. Each proposal's strengths and weaknesses (2-3 sentences each)
-2. Key differences to pay attention to (price per watt, loan costs, battery, production)
-3. Red flags or hidden costs (high interest, missing battery, unrealistic production)
-4. Your honest recommendation on best overall value
-5. Questions they should ask each company before signing
-
-Tone: warm, conversational — like a smart neighbor who knows solar. Plain language. No bullet points — flowing paragraphs. Under 500 words.` }],
-        }),
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/solar-analysis`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ summaries }),
       });
+      if (!resp.ok) throw new Error("Analysis request failed");
       const data = await resp.json();
-      setAiText(data.content?.map(b => b.text || "").join("") || "Unable to generate analysis.");
+      setAiText(data.text || "Unable to generate analysis.");
     } catch { setAiText("We couldn't generate AI analysis right now. Review the comparison numbers above."); }
     setAiLoading(false);
   };
