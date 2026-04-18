@@ -3,6 +3,10 @@
 // Sits between the browser and the Anthropic API so the API key stays server-side
 // (it would otherwise be baked into the built JS bundle). Accepts a small array
 // of proposal summaries, calls Claude, returns a friendly write-up as plain text.
+//
+// JWT verification is disabled at the gateway level because the project uses
+// publishable keys (sb_publishable_...), which are not JWTs. The function is
+// still protected by per-IP rate limiting and strict input validation below.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Anthropic from "npm:@anthropic-ai/sdk@^0.88.0";
