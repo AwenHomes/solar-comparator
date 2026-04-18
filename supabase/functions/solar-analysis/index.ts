@@ -63,7 +63,7 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!apiKey) {
     console.error("ANTHROPIC_API_KEY not configured");
-    return json(500, { error: "Service not configured" });
+    return json(503, { error: "Service not configured" });
   }
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
