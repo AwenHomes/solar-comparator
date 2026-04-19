@@ -19,16 +19,22 @@ jobs:
         with:
           version: latest
 
+      # The SPA authenticates with Supabase using a publishable key
+      # (sb_publishable_...), which is not a JWT — so JWT verification must
+      # stay OFF on both functions. Each deploy resets this flag, so we pass
+      # --no-verify-jwt explicitly every time.
       - name: Deploy solar-analysis
         run: |
           supabase functions deploy solar-analysis \
-            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy location-solar
         run: |
           supabase functions deploy location-solar \
-            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
